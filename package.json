@@ -2,8 +2,8 @@
 	"name": "flutter-dependency-docs",
 	"version": "1.2.0",
 	"publisher": "djbkwon",
-	"displayName": "Flutter Links",
-	"description": "Show pub.dev links for your Flutter dependencies.",
+	"displayName": "Flutter Pubspec Links",
+	"description": "Float pub.dev links above dependencies in pubspec.yaml.",
 	"engines": {
 		"vscode": "^1.60.0"
 	},
@@ -50,14 +50,12 @@
 			{
 				"command": "flutterLinks.show",
 				"title": "Show pub.dev Links",
-				"category": "Flutter Links",
-				"icon": "./resources/eye-hidden.svg"
+				"icon": "./resources/hide-links.svg"
 			},
 			{
 				"command": "flutterLinks.hide",
 				"title": "Hide pub.dev Links",
-				"category": "Flutter Links",
-				"icon": "./resources/eye-visible.svg"
+				"icon": "./resources/show-links.svg"
 			}
 		],
 		"menus": {
