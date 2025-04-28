@@ -1,5 +1,6 @@
 # Change Log
 
+- 1.2.0 Implement "Toggle Display" button & improve overall extension quality.
 - 1.1.0 Version 1.1.0 ready.
 - 1.0.9 Minor fixes.
 - 1.0.8 Skipped accidentally.

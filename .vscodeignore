@@ -1,15 +1,31 @@
 .vscode/**
 .vscode-test/**
-vsc-extension-quickstart.md
-**/tsconfig.json
-**/tslint.json
-**/*.map
-**/*.ts
-
-.git/
-.github/
-.gitignore
-node_modules/**
-out/test/**
+.github/**
 src/**
+*.vsix
+*.zip
+*.tar.gz
+.gitignore
+.vscodeignore
+tsconfig.json
+tslint.json # Ensure this is ignored if you deleted it
+publish.sh # Ensure this is ignored if you deleted it
+yarn.lock
+# Optionally ignore specific dev files if needed
+# *.map files are often excluded unless needed for source mapping in production
+
+# Ensure necessary files ARE included (negate ignore patterns):
+!out/extension.js # Or your main entry point if different
+!out/**/*.js # Include all compiled JS
+!LICENSE.txt
+!README.md
+!CHANGELOG.md
+!package.json
+!img/icon.png # Include the main icon
+# Include other necessary assets from img/ if needed
+
+# Exclude map files if not needed for published debugging
+out/**/*.js.map
+
+# MacOS
 .DS_Store
