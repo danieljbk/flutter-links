@@ -1,18 +1,17 @@
+// extension.ts
 import * as vscode from 'vscode'
-import { PubspecCodeLensProvider } from './provider' // Use named import
+import { PubspecCodeLensProvider } from './provider'
 
-// Key for storing the toggle state in workspace settings
 const TOGGLE_STATE_KEY = 'flutterLinks.enabled'
+const CONTEXT_KEY_ENABLED = 'flutterLinks:enabled' // Context key remains the same
 
-// Helper to get the base URL from configuration
+// Helper functions (getBaseUrl, openPackageUrl) remain the same...
 function getBaseUrl(): string {
-  // Use the renamed configuration key
   return vscode.workspace
     .getConfiguration('flutterLinks')
     .get<string>('baseUrl', 'https://pub.dev/')
 }
 
-// Original function to open URL
 function openPackageUrl(packageName: string) {
   const baseUrl = getBaseUrl()
   const packageUrl = baseUrl + 'packages/' + encodeURI(packageName)
@@ -23,19 +22,17 @@ export function activate(context: vscode.ExtensionContext) {
   console.log('Flutter Links activated')
 
   // --- State Management ---
-  // Get initial state (default to true/enabled)
+  // Initial state read remains the same
   let isEnabled = context.workspaceState.get<boolean>(TOGGLE_STATE_KEY, true)
+  vscode.commands.executeCommand('setContext', CONTEXT_KEY_ENABLED, isEnabled)
 
   // --- CodeLens Provider ---
-  // Create ONE instance of the provider
-  const codeLensProvider = new PubspecCodeLensProvider(context) // Pass context
-
-  // Register the provider
-  // Use a more specific document selector
+  // Instantiation and registration remain the same
+  const codeLensProvider = new PubspecCodeLensProvider(context)
   const docSelector: vscode.DocumentSelector = {
     language: 'yaml',
     scheme: 'file',
-    pattern: '**/pubspec.yaml', // Match pubspec.yaml anywhere in the workspace
+    pattern: '**/pubspec.yaml',
   }
   const codeLensProviderDisposable = vscode.languages.registerCodeLensProvider(
     docSelector,
@@ -43,27 +40,49 @@ export function activate(context: vscode.ExtensionContext) {
   )
   context.subscriptions.push(codeLensProviderDisposable)
 
-  // --- Toggle Command ---
-  const toggleCommandDisposable = vscode.commands.registerCommand(
-    'flutterLinks.toggle',
+  // --- NEW: Show Command ---
+  const showCommandDisposable = vscode.commands.registerCommand(
+    'flutterLinks.show',
     () => {
-      // Flip the state
-      isEnabled = !isEnabled
-      // Store the new state persistently for this workspace
-      context.workspaceState.update(TOGGLE_STATE_KEY, isEnabled)
-
-      // Trigger a refresh of the CodeLenses
+      // Check if already enabled to avoid unnecessary updates
+      if (context.workspaceState.get<boolean>(TOGGLE_STATE_KEY) === true) {
+        return
+      }
+      console.log('Executing flutterLinks.show')
+      // Set state to true
+      context.workspaceState.update(TOGGLE_STATE_KEY, true)
+      // Update context key
+      vscode.commands.executeCommand('setContext', CONTEXT_KEY_ENABLED, true)
+      // Refresh lenses
       codeLensProvider.triggerRefresh()
-
-      // Notify the user
-      vscode.window.showInformationMessage(
-        `Flutter Links: ${isEnabled ? 'Enabled' : 'Disabled'}`
-      )
+      // Optional notification
+      // vscode.window.showInformationMessage('Flutter Links: Enabled');
     }
   )
-  context.subscriptions.push(toggleCommandDisposable)
+  context.subscriptions.push(showCommandDisposable)
 
-  // --- Existing Commands (register them) ---
+  // --- NEW: Hide Command ---
+  const hideCommandDisposable = vscode.commands.registerCommand(
+    'flutterLinks.hide',
+    () => {
+      // Check if already disabled to avoid unnecessary updates
+      if (context.workspaceState.get<boolean>(TOGGLE_STATE_KEY) === false) {
+        return
+      }
+      console.log('Executing flutterLinks.hide')
+      // Set state to false
+      context.workspaceState.update(TOGGLE_STATE_KEY, false)
+      // Update context key
+      vscode.commands.executeCommand('setContext', CONTEXT_KEY_ENABLED, false)
+      // Refresh lenses
+      codeLensProvider.triggerRefresh()
+      // Optional notification
+      // vscode.window.showInformationMessage('Flutter Links: Disabled');
+    }
+  )
+  context.subscriptions.push(hideCommandDisposable)
+
+  // --- Existing Commands (viewDependency, viewDependencyWithParameter) remain the same ---
   const commandSearchDisposable = vscode.commands.registerTextEditorCommand(
     'extension.viewDependencyWithParameter',
     (
@@ -87,7 +106,6 @@ export function activate(context: vscode.ExtensionContext) {
         })
         .then((text) => {
           if (text) {
-            // Check for non-empty string
             console.log('Input: ' + text)
             openPackageUrl(text)
           } else {
@@ -98,12 +116,10 @@ export function activate(context: vscode.ExtensionContext) {
   )
   context.subscriptions.push(commandInputDisposable)
 
-  // Optional: Update configuration reading if needed elsewhere
-  // Example: Listen for config changes if base URL affects other things
+  // Config change listener remains the same
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('flutterLinks.baseUrl')) {
-        // If base URL change should also refresh lenses, do it here
         codeLensProvider.triggerRefresh()
         console.log('Flutter Links base URL changed, refreshing lenses.')
       }
@@ -111,7 +127,7 @@ export function activate(context: vscode.ExtensionContext) {
   )
 }
 
-// this method is called when your extension is deactivated
 export function deactivate() {
+  vscode.commands.executeCommand('setContext', CONTEXT_KEY_ENABLED, undefined)
   console.log('Flutter Links deactivated')
 }

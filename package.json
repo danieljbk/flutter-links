@@ -1,11 +1,11 @@
 {
 	"name": "flutter-dependency-docs",
-	"version": "1.2.0",
+	"version": "1.2.1",
 	"publisher": "djbkwon",
 	"displayName": "Flutter Links",
 	"description": "Show pub.dev links for your Flutter dependencies.",
 	"engines": {
-		"vscode": "^1.32.0"
+		"vscode": "^1.60.0"
 	},
 	"license": "MIT",
 	"categories": [
@@ -53,8 +53,14 @@
 				"category": "Flutter Links"
 			},
 			{
-				"command": "flutterLinks.toggle",
-				"title": "Flutter Links: Toggle Visibility",
+				"command": "flutterLinks.show",
+				"title": "Flutter Links: Show Links",
+				"category": "Flutter Links",
+				"icon": "$(eye-closed)"
+			},
+			{
+				"command": "flutterLinks.hide",
+				"title": "Flutter Links: Hide Links",
 				"category": "Flutter Links",
 				"icon": "$(eye)"
 			}
@@ -62,9 +68,16 @@
 		"menus": {
 			"editor/title": [
 				{
-					"command": "flutterLinks.toggle",
-					"when": "resourceLangId == yaml && resourceFilename == pubspec.yaml",
-					"group": "navigation"
+					"command": "flutterLinks.show",
+					"when": "resourceLangId == yaml && resourceFilename == pubspec.yaml && !flutterLinks:enabled",
+					"group": "navigation",
+					"tooltip": "Show Flutter Links"
+				},
+				{
+					"command": "flutterLinks.hide",
+					"when": "resourceLangId == yaml && resourceFilename == pubspec.yaml && flutterLinks:enabled",
+					"group": "navigation",
+					"tooltip": "Hide Flutter Links"
 				}
 			]
 		}
