@@ -130,7 +130,7 @@ export class PubspecCodeLensProvider implements vscode.CodeLensProvider {
 
             // Create the command that will be executed when the CodeLens is clicked
             const command: vscode.Command = {
-              title: `🔗 pub.dev/packages/${packageName}`, // Text displayed for the CodeLens
+              title: `pub.dev/packages/${packageName}`, // Text displayed for the CodeLens
               tooltip: `Open ${packageName} on pub.dev`, // Hover text
               command: CMD_VIEW_DEPENDENCY_PARAM, // Command ID to execute
               arguments: [packageName], // Arguments passed to the command

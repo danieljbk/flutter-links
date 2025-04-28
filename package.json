@@ -1,6 +1,6 @@
 {
 	"name": "flutter-dependency-docs",
-	"version": "1.2.1",
+	"version": "1.2.0",
 	"publisher": "djbkwon",
 	"displayName": "Flutter Links",
 	"description": "Show pub.dev links for your Flutter dependencies.",
@@ -40,24 +40,24 @@
 		"commands": [
 			{
 				"command": "extension.viewDependencyWithParameter",
-				"title": "Flutter Links: Open Package URL"
+				"title": "Open Package URL"
 			},
 			{
 				"command": "extension.viewDependency",
-				"title": "Flutter Links: Search pub.dev Package",
+				"title": "Search pub.dev Package",
 				"category": "Flutter Links"
 			},
 			{
 				"command": "flutterLinks.show",
-				"title": "Flutter Links: Show Links",
+				"title": "Show pub.dev Links",
 				"category": "Flutter Links",
-				"icon": "$(eye-closed)"
+				"icon": "./resources/eye-hidden.svg"
 			},
 			{
 				"command": "flutterLinks.hide",
-				"title": "Flutter Links: Hide Links",
+				"title": "Hide pub.dev Links",
 				"category": "Flutter Links",
-				"icon": "$(eye)"
+				"icon": "./resources/eye-visible.svg"
 			}
 		],
 		"menus": {
@@ -65,13 +65,13 @@
 				{
 					"command": "flutterLinks.show",
 					"when": "resourceLangId == yaml && resourceFilename == pubspec.yaml && !flutterLinks:enabled",
-					"group": "navigation",
+					"group": "navigation@2",
 					"tooltip": "Show Flutter Links"
 				},
 				{
 					"command": "flutterLinks.hide",
 					"when": "resourceLangId == yaml && resourceFilename == pubspec.yaml && flutterLinks:enabled",
-					"group": "navigation",
+					"group": "navigation@2",
 					"tooltip": "Hide Flutter Links"
 				}
 			]
