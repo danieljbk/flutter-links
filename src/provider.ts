@@ -1,170 +1,166 @@
+// src/provider.ts
+
+/**
+ * Provides CodeLenses for pubspec.yaml files, showing links to pub.dev.
+ * Also handles enabling/disabling based on workspace state.
+ */
+
 import * as vscode from 'vscode'
+import { TOGGLE_STATE_KEY, CMD_VIEW_DEPENDENCY_PARAM } from './constants' // Import shared constants
 
-// --- NEW: Import the toggle state key ---
-// If extension.ts and provider.ts are separate modules,
-// you might need to export/import this constant or pass it differently.
-// For simplicity here, we redeclare it, but sharing is better.
-const TOGGLE_STATE_KEY = 'flutterLinks.enabled'
-
-// Helper functions (keep as they are)
-function getLeftSpaceWidth(text: string): number {
-  // ... (your existing logic)
-  let width = 0
-  for (let i = 0; i < text.length; i += 1) {
-    if (text.charAt(i) === ' ') {
-      width += 1
-    } else {
-      break
-    }
-  }
-  return width
-}
-
-function readDocumentLines(document: vscode.TextDocument): vscode.TextLine[] {
-  // Ensure we only process pubspec.yaml
-  // The selector in extension.ts helps, but double-check is safe.
-  if (!document.fileName.endsWith('pubspec.yaml')) {
-    console.log('Provider skipping non-pubspec file:', document.fileName)
-    return []
-  }
-  console.log('Provider processing:', document.fileName)
-
-  // ... (your existing parsing logic) ...
-  let inDependencyScope = false
-  let lastItemOK = false
-  let lastItemLeftSpaceWidth = 0
-
-  return new Array(document.lineCount)
-    .fill('')
-    .map((line, idx) => document.lineAt(idx))
-    .filter((line) => {
-      const { text } = line
-
-      // ignore empty line
-      if (text.trim().length === 0) {
-        return false
-      }
-
-      // at least one space
-      if (text.startsWith(' ') && inDependencyScope) {
-        if (!text.includes(':')) {
-          // console.log('failed no: =', text) // Reduce noise
-          return false
-        }
-
-        if (lastItemOK) {
-          let currentWidth = getLeftSpaceWidth(text)
-          if (currentWidth > lastItemLeftSpaceWidth) {
-            // child item, ignore
-            return false
-          }
-        }
-
-        lastItemOK = true
-        lastItemLeftSpaceWidth = getLeftSpaceWidth(text)
-        return true
-      }
-
-      // detect dependency scope
-      if (text.startsWith('dependencies:') && text.trim() === 'dependencies:') {
-        inDependencyScope = true
-      } else if (
-        text.startsWith('dev_dependencies:') &&
-        text.trim() === 'dev_dependencies:'
-      ) {
-        inDependencyScope = true
-      } else if (
-        text.startsWith('dependency_overrides:') && // Handle overrides too
-        text.trim() === 'dependency_overrides:'
-      ) {
-        inDependencyScope = true
-      } else if (!text.startsWith(' ')) {
-        // Any non-indented line resets scope
-        inDependencyScope = false
-      }
-      lastItemOK = false
-      return false
-    })
-}
-
-// --- Modified Provider Class ---
+/**
+ * Implements the CodeLensProvider interface for Flutter dependency links.
+ */
 export class PubspecCodeLensProvider implements vscode.CodeLensProvider {
-  // --- Event Emitter for Refreshing ---
   private _onDidChangeCodeLenses: vscode.EventEmitter<void> =
     new vscode.EventEmitter<void>()
   public readonly onDidChangeCodeLenses: vscode.Event<void> =
     this._onDidChangeCodeLenses.event
 
-  // --- Store Context ---
   private context: vscode.ExtensionContext
 
-  // --- Constructor to Accept Context ---
   constructor(context: vscode.ExtensionContext) {
     this.context = context
 
-    // Optional: Could listen for workspace state changes here too,
-    // but the command pattern triggering refresh is usually sufficient.
+    // Optional: Listen for configuration changes if the provider itself needs
+    // to adapt its behavior based on settings other than just the base URL.
+    // vscode.workspace.onDidChangeConfiguration(_ => {
+    //    this._onDidChangeCodeLenses.fire();
+    // });
   }
 
-  // --- Method to Trigger Refresh ---
+  /**
+   * Triggers a refresh of the CodeLenses. Called from extension.ts when state changes.
+   */
   public triggerRefresh(): void {
-    console.log('FlutterLinks Provider: Refresh triggered')
     this._onDidChangeCodeLenses.fire()
   }
 
-  // --- Provide CodeLenses Implementation ---
-  provideCodeLenses(
+  /**
+   * Computes and returns CodeLenses for the given document.
+   * @param document The text document to analyze.
+   * @param token A cancellation token.
+   * @returns A list of CodeLens objects or null.
+   */
+  public provideCodeLenses(
     document: vscode.TextDocument,
     token: vscode.CancellationToken
   ): vscode.ProviderResult<vscode.CodeLens[]> {
-    // --- Check Toggle State ---
+    // 1. Check Enablement State
+    // Retrieve the current toggle state from workspace storage.
     const isEnabled = this.context.workspaceState.get<boolean>(
       TOGGLE_STATE_KEY,
       true
     )
     if (!isEnabled) {
-      console.log('FlutterLinks Provider: Disabled, returning no lenses.')
-      return [] // Return empty array if disabled
-    }
-
-    // --- Proceed if Enabled ---
-    console.log('FlutterLinks Provider: Enabled, providing lenses.')
-    const lines = readDocumentLines(document) // Use your parsing logic
-
-    if (token.isCancellationRequested) {
-      console.log('FlutterLinks Provider: Cancellation requested.')
+      // If disabled, return an empty array immediately.
       return []
     }
 
-    return lines
-      .map((line) => {
-        const packageNameMatch = line.text.match(/^\s*([a-zA-Z0-9_]+)\s*:/)
-        if (!packageNameMatch || !packageNameMatch[1]) {
-          return null // Should not happen if readDocumentLines is correct, but safe check
-        }
-        const packageName = packageNameMatch[1]
+    // 2. Basic Document Check (optional, selector in extension.ts is primary)
+    // Although the registration uses a selector, an extra check doesn't hurt.
+    if (
+      document.languageId !== 'yaml' ||
+      !document.fileName.endsWith('pubspec.yaml')
+    ) {
+      return []
+    }
 
-        const range = line.range // Use the whole line range for the CodeLens position
-        const command: vscode.Command = {
-          title: `🔗 pub.dev/packages/${packageName}`, // Add emoji for visibility?
-          tooltip: `Open ${packageName} on pub.dev`,
-          command: 'extension.viewDependencyWithParameter', // Your existing command
-          arguments: [packageName],
+    console.log(
+      `[Flutter Links Provider] Providing lenses for: ${document.fileName}`
+    )
+
+    // 3. Parse Document Lines for Dependencies
+    const codeLenses: vscode.CodeLens[] = []
+    let inDependencyScope = false // Tracks if currently inside a relevant dependency section
+    let currentScopeIndent = -1 // Indentation level of the current scope key (e.g., 'dependencies:')
+
+    for (let i = 0; i < document.lineCount; i++) {
+      // Check for cancellation request periodically
+      if (token.isCancellationRequested) {
+        console.log('[Flutter Links Provider] Cancellation requested.')
+        return []
+      }
+
+      const line = document.lineAt(i)
+      const text = line.text
+      const trimmedText = text.trim()
+
+      // Ignore empty lines and comments
+      if (trimmedText.length === 0 || trimmedText.startsWith('#')) {
+        continue
+      }
+
+      const lineIndent = line.firstNonWhitespaceCharacterIndex
+
+      // Check for top-level dependency scope keys
+      if (lineIndent === 0) {
+        if (
+          trimmedText === 'dependencies:' ||
+          trimmedText === 'dev_dependencies:' ||
+          trimmedText === 'dependency_overrides:'
+        ) {
+          inDependencyScope = true
+          currentScopeIndent = lineIndent // Should be 0
+          console.log(`[Flutter Links Provider] Entered scope: ${trimmedText}`)
+        } else {
+          // Any other top-level key resets the scope
+          if (inDependencyScope) {
+            console.log(
+              `[Flutter Links Provider] Exited scope due to non-indented line: ${trimmedText}`
+            )
+          }
+          inDependencyScope = false
+          currentScopeIndent = -1
         }
-        return new vscode.CodeLens(range, command)
-      })
-      .filter((lens) => lens !== null) as vscode.CodeLens[] // Filter out any nulls
+        continue // Move to the next line after processing scope keys
+      }
+
+      // Process lines within an active dependency scope
+      if (inDependencyScope && lineIndent > currentScopeIndent) {
+        // This is a potential dependency line.
+        // Basic check: must contain a colon and not be just whitespace.
+        // More robust parsing would use a YAML library.
+        if (trimmedText.includes(':')) {
+          // Attempt to extract package name (key before the colon)
+          const match = trimmedText.match(/^([a-zA-Z0-9_]+)\s*:/)
+          if (match && match[1]) {
+            const packageName = match[1]
+            const range = line.range // Range for the entire line
+
+            // Create the command that will be executed when the CodeLens is clicked
+            const command: vscode.Command = {
+              title: `🔗 pub.dev/packages/${packageName}`, // Text displayed for the CodeLens
+              tooltip: `Open ${packageName} on pub.dev`, // Hover text
+              command: CMD_VIEW_DEPENDENCY_PARAM, // Command ID to execute
+              arguments: [packageName], // Arguments passed to the command
+            }
+
+            // Add the new CodeLens to our list
+            codeLenses.push(new vscode.CodeLens(range, command))
+          }
+        }
+        // We don't handle nested maps under dependencies here (like git:, path:, sdk:)
+        // This simple parser only creates links for direct key: value pairs.
+      }
+    }
+
+    console.log(
+      `[Flutter Links Provider] Found ${codeLenses.length} potential dependencies.`
+    )
+    return codeLenses
   }
 
-  // Optional: resolveCodeLens if needed for performance
-  // resolveCodeLens?(codeLens: vscode.CodeLens, token: vscode.CancellationToken): vscode.ProviderResult<vscode.CodeLens> {
-  //     // If you move heavy logic here (like fetching latest version), check isEnabled again
-  //     const isEnabled = this.context.workspaceState.get<boolean>(TOGGLE_STATE_KEY, true);
-  //     if (!isEnabled) {
-  //         // Technically shouldn't be called if provideCodeLenses returns [], but be safe
-  //         return null;
-  //     }
-  //     // ... resolve logic ...
-  // 	return codeLens;
+  // Optional: resolveCodeLens if you need to perform heavy computations
+  // only when a CodeLens becomes visible. For simple links, it's usually not needed.
+  // public resolveCodeLens?(
+  //   codeLens: vscode.CodeLens,
+  //   token: vscode.CancellationToken
+  // ): vscode.ProviderResult<vscode.CodeLens> {
+  //   // Example: Fetch latest version here if needed
+  //   // Ensure to check isEnabled state again if doing work here
+  //   // const isEnabled = this.context.workspaceState.get<boolean>(TOGGLE_STATE_KEY, true);
+  //   // if (!isEnabled) return null;
+  //   return codeLens;
   // }
 }

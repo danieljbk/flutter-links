@@ -1,27 +1,69 @@
-// extension.ts (Complete File)
+// src/extension.ts
+
+/**
+ * Main activation point for the Flutter Links extension.
+ * Handles command registration, state management, context setting,
+ * and CodeLens provider activation.
+ */
 
 import * as vscode from 'vscode'
 import { PubspecCodeLensProvider } from './provider'
+import {
+  TOGGLE_STATE_KEY,
+  CONTEXT_KEY_ENABLED,
+  CMD_SHOW_LINKS,
+  CMD_HIDE_LINKS,
+  CMD_VIEW_DEPENDENCY_INPUT,
+  CMD_VIEW_DEPENDENCY_PARAM,
+  CONFIG_BASE_URL,
+} from './constants' // Import shared constants
 
-const TOGGLE_STATE_KEY = 'flutterLinks.enabled'
-const CONTEXT_KEY_ENABLED = 'flutterLinks:enabled' // Context key remains the same
+// --- Helper Functions ---
 
-// Helper function to get the base URL from configuration
+/**
+ * Gets the base URL for package links from configuration.
+ * @returns The configured base URL or the default pub.dev URL.
+ */
 function getBaseUrl(): string {
+  // Read configuration using the constant key
   return vscode.workspace
-    .getConfiguration('flutterLinks')
-    .get<string>('baseUrl', 'https://pub.dev/')
+    .getConfiguration('flutterLinks') // Section name matches package.json
+    .get<string>(CONFIG_BASE_URL.split('.')[1], 'https://pub.dev/') // Get specific key, provide default
 }
 
-// Helper function to open the package URL
-function openPackageUrl(packageName: string) {
-  const baseUrl = getBaseUrl()
-  const packageUrl = baseUrl + 'packages/' + encodeURI(packageName)
-  vscode.env.openExternal(vscode.Uri.parse(packageUrl))
+/**
+ * Opens the package URL in the default external browser.
+ * @param packageName The name of the package to open.
+ */
+function openPackageUrl(packageName: string): void {
+  if (!packageName) return // Basic guard clause
+
+  try {
+    const baseUrl = getBaseUrl()
+    const packageUrl = baseUrl + 'packages/' + encodeURI(packageName)
+    vscode.env.openExternal(vscode.Uri.parse(packageUrl))
+  } catch (error) {
+    console.error(
+      `[Flutter Links] Error constructing or opening URL for ${packageName}:`,
+      error
+    )
+    vscode.window.showErrorMessage(
+      `Failed to open link for package: ${packageName}`
+    )
+  }
 }
 
-// --- Function to show timed notification with PROGRESS ANIMATION ---
-function showTimedNotification(message: string, durationMs: number = 3000) {
+/**
+ * Shows a timed notification in the bottom-right corner using the Progress API.
+ * This workarounds the lack of a built-in timeout for showInformationMessage.
+ *
+ * @param message The text message to display.
+ * @param durationMs The duration in milliseconds (default: 3000).
+ */
+function showTimedNotification(
+  message: string,
+  durationMs: number = 3000
+): void {
   vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
@@ -29,155 +71,174 @@ function showTimedNotification(message: string, durationMs: number = 3000) {
       cancellable: false,
     },
     (progress, token) => {
-      // --- Animate Progress ---
-      const totalSteps = 30 // Number of updates over the duration
-      const increment = 100 / totalSteps // Percentage increment per step
-      const intervalDuration = durationMs / totalSteps // How often to update (ms)
-
+      // Animate progress to make the timeout less abrupt visually
+      const totalSteps = 30
+      const increment = 100 / totalSteps
+      const intervalDuration = durationMs / totalSteps
       let currentStep = 0
-      // Report initial progress slightly so the bar appears immediately
+
+      // Report initial state so bar appears
       progress.report({ increment: 0 })
 
       return new Promise<void>((resolve) => {
-        // Start interval timer to report progress
         const interval = setInterval(() => {
           if (currentStep < totalSteps) {
             progress.report({ increment: increment })
             currentStep++
           } else {
-            // Should technically not be reached if interval is cleared properly, but safety first
+            // Fallback clear if somehow step count exceeded before timeout
             clearInterval(interval)
             resolve()
           }
         }, intervalDuration)
 
-        // Set a timeout to ensure completion and cleanup after the total duration
+        // Ensure cleanup and resolution after the main duration
         setTimeout(() => {
-          clearInterval(interval) // Stop the interval updates
-          resolve() // Complete the progress, hiding the notification
+          clearInterval(interval)
+          resolve() // Resolving the promise hides the notification
         }, durationMs)
       })
-      // --- End Animate Progress ---
     }
   )
 }
 
-// --- Main Activation Function ---
-export function activate(context: vscode.ExtensionContext) {
-  console.log('Flutter Links activated')
+// --- Extension Lifecycle ---
 
-  // --- State Management ---
-  // Read initial state and set the context key
-  let isEnabled = context.workspaceState.get<boolean>(TOGGLE_STATE_KEY, true)
+/**
+ * Called when the extension is activated.
+ * Sets up commands, state, providers, and listeners.
+ * @param context The extension context provided by VS Code.
+ */
+export function activate(context: vscode.ExtensionContext): void {
+  console.log('[Flutter Links] Activated')
+
+  // --- State & Context Initialization ---
+  const isEnabled = context.workspaceState.get<boolean>(TOGGLE_STATE_KEY, true)
   vscode.commands.executeCommand('setContext', CONTEXT_KEY_ENABLED, isEnabled)
+  console.log(
+    `[Flutter Links] Initial state: ${isEnabled ? 'Enabled' : 'Disabled'}`
+  )
 
-  // --- CodeLens Provider Setup ---
-  // Create and register the provider instance
+  // --- CodeLens Provider ---
   const codeLensProvider = new PubspecCodeLensProvider(context)
   const docSelector: vscode.DocumentSelector = {
+    // Using language id is generally more reliable than file extension
     language: 'yaml',
     scheme: 'file',
-    pattern: '**/pubspec.yaml', // Target only pubspec.yaml files
+    // Pattern ensures we only target files named pubspec.yaml
+    pattern: '**/pubspec.yaml',
   }
   const codeLensProviderDisposable = vscode.languages.registerCodeLensProvider(
     docSelector,
     codeLensProvider
   )
   context.subscriptions.push(codeLensProviderDisposable)
+  console.log('[Flutter Links] CodeLens provider registered for pubspec.yaml')
 
   // --- Command Registrations ---
 
   // Show Links Command
   const showCommandDisposable = vscode.commands.registerCommand(
-    'flutterLinks.show',
+    CMD_SHOW_LINKS,
     () => {
-      // Avoid redundant execution if already enabled
-      if (context.workspaceState.get<boolean>(TOGGLE_STATE_KEY) === true) {
-        return
-      }
-      console.log('Executing flutterLinks.show')
-      // Update state and context
+      if (context.workspaceState.get<boolean>(TOGGLE_STATE_KEY) === true) return
+
+      console.log(`[Flutter Links] Executing command: ${CMD_SHOW_LINKS}`)
       context.workspaceState.update(TOGGLE_STATE_KEY, true)
       vscode.commands.executeCommand('setContext', CONTEXT_KEY_ENABLED, true)
-      // Refresh the CodeLenses in the editor
       codeLensProvider.triggerRefresh()
-      // Show timed notification
-      showTimedNotification('Flutter Links: Enabled', 3000)
+      showTimedNotification('Flutter Links: Enabled')
     }
   )
   context.subscriptions.push(showCommandDisposable)
 
   // Hide Links Command
   const hideCommandDisposable = vscode.commands.registerCommand(
-    'flutterLinks.hide',
+    CMD_HIDE_LINKS,
     () => {
-      // Avoid redundant execution if already disabled
-      if (context.workspaceState.get<boolean>(TOGGLE_STATE_KEY) === false) {
+      if (context.workspaceState.get<boolean>(TOGGLE_STATE_KEY) === false)
         return
-      }
-      console.log('Executing flutterLinks.hide')
-      // Update state and context
+
+      console.log(`[Flutter Links] Executing command: ${CMD_HIDE_LINKS}`)
       context.workspaceState.update(TOGGLE_STATE_KEY, false)
       vscode.commands.executeCommand('setContext', CONTEXT_KEY_ENABLED, false)
-      // Refresh the CodeLenses in the editor
       codeLensProvider.triggerRefresh()
-      // Show timed notification
-      showTimedNotification('Flutter Links: Disabled', 3000)
+      showTimedNotification('Flutter Links: Disabled')
     }
   )
   context.subscriptions.push(hideCommandDisposable)
 
-  // Existing Command: Open URL from CodeLens parameter
-  const commandSearchDisposable = vscode.commands.registerTextEditorCommand(
-    'extension.viewDependencyWithParameter',
+  // View Dependency (from CodeLens) Command
+  const viewParamCommandDisposable = vscode.commands.registerTextEditorCommand(
+    CMD_VIEW_DEPENDENCY_PARAM,
     (
       textEditor: vscode.TextEditor,
       edit: vscode.TextEditorEdit,
-      packageName: string
+      packageName?: string
     ) => {
       if (packageName) {
+        console.log(
+          `[Flutter Links] Executing command: ${CMD_VIEW_DEPENDENCY_PARAM} for ${packageName}`
+        )
         openPackageUrl(packageName)
+      } else {
+        console.warn(
+          `[Flutter Links] ${CMD_VIEW_DEPENDENCY_PARAM} called without package name.`
+        )
       }
     }
   )
-  context.subscriptions.push(commandSearchDisposable)
+  context.subscriptions.push(viewParamCommandDisposable)
 
-  // Existing Command: Open URL from user input
-  const commandInputDisposable = vscode.commands.registerCommand(
-    'extension.viewDependency',
-    () => {
-      vscode.window
-        .showInputBox({
-          prompt: 'Enter Flutter package name to view on pub.dev',
-        })
-        .then((text) => {
-          if (text) {
-            // Check for non-empty string
-            console.log('Input: ' + text)
-            openPackageUrl(text)
-          } else {
-            console.log('No input provided.')
-          }
-        })
+  // View Dependency (from Input) Command
+  const viewInputCommandDisposable = vscode.commands.registerCommand(
+    CMD_VIEW_DEPENDENCY_INPUT,
+    async () => {
+      // Use async/await for cleaner promise handling
+      console.log(
+        `[Flutter Links] Executing command: ${CMD_VIEW_DEPENDENCY_INPUT}`
+      )
+      const packageName = await vscode.window.showInputBox({
+        prompt: 'Enter Flutter package name to view on pub.dev',
+        placeHolder: 'e.g., provider',
+        ignoreFocusOut: true, // Keep input box open if user clicks elsewhere
+      })
+
+      if (packageName) {
+        console.log(`[Flutter Links] Input received: ${packageName}`)
+        openPackageUrl(packageName)
+      } else {
+        console.log('[Flutter Links] No input provided.')
+        // Optionally show a message if desired:
+        // vscode.window.showInformationMessage('No package name entered.');
+      }
     }
   )
-  context.subscriptions.push(commandInputDisposable)
+  context.subscriptions.push(viewInputCommandDisposable)
 
-  // --- Configuration Change Listener ---
-  // Refresh lenses if the base URL configuration changes
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('flutterLinks.baseUrl')) {
+  // --- Configuration Listener ---
+  const configListenerDisposable = vscode.workspace.onDidChangeConfiguration(
+    (e) => {
+      // Check if the specific configuration key that affects us has changed
+      if (e.affectsConfiguration(CONFIG_BASE_URL)) {
+        console.log(
+          '[Flutter Links] Base URL configuration changed, refreshing lenses.'
+        )
+        // No need to re-read config here, getBaseUrl() reads it on demand.
+        // Just trigger a refresh so new links (if any) use the new base.
         codeLensProvider.triggerRefresh()
-        console.log('Flutter Links base URL changed, refreshing lenses.')
       }
-    })
+    }
   )
+  context.subscriptions.push(configListenerDisposable)
 }
 
-// --- Deactivation Function ---
-export function deactivate() {
-  // Clean up the context key when the extension is deactivated
+/**
+ * Called when the extension is deactivated.
+ * Cleans up resources, like context keys.
+ */
+export function deactivate(): void {
+  // Clean up context state
   vscode.commands.executeCommand('setContext', CONTEXT_KEY_ENABLED, undefined)
-  console.log('Flutter Links deactivated')
+  console.log('[Flutter Links] Deactivated')
 }
